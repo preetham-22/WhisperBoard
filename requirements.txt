@@ -2,20 +2,3 @@ streamlit
 vosk
 sounddevice
 numpy
-
-
-### Step 2: Push the Final Update to GitHub
-
-Now, let's get this one last crucial fix up to your GitHub repository.
-
-1.  Open a **Command Prompt** in your `WhisperBoard-Final` folder.
-2.  Run these commands one by one:
-    ```cmd
-    REM Add the change we just made
-    git add requirements.txt
-
-    REM Save the change with a clear message
-    git commit -m "fix: Update dependencies for modern Python environment"
-
-    REM Push the fix to GitHub
-    git push origin main
