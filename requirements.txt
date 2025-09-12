@@ -2,3 +2,4 @@ streamlit
 vosk
 sounddevice
 numpy
+streamlit-webrtc
