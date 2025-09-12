@@ -1,0 +1,17 @@
+Python
+pycache/
+*.py[cod]
+*.so
+.env
+.venv
+env/
+venv/
+
+Vosk Model Folders
+This is the most important part!
+It prevents uploading the large AI model files to GitHub.
+model/
+model-hi/
+
+Streamlit
+.streamlit/
