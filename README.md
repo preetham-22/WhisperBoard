@@ -53,12 +53,7 @@ Place this model-hi folder inside your project directory.
 
 Your final folder structure should look like this:
 
-WhisperBoard/
-├── model/            <-- Your English model files
-├── model-hi/         <-- Your Hindi model files
-├── app.py
-├── requirements.txt
-└── README.md
+<img width="938" height="236" alt="image" src="https://github.com/user-attachments/assets/32201695-3682-4335-a1e1-c11525d285ab" />
 
 4. How to Install the Required Packages
 It is highly recommended to use a Python virtual environment to keep your project dependencies isolated.
