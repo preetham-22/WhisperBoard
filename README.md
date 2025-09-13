@@ -56,7 +56,7 @@ Your final folder structure should look like this:
 <img width="938" height="236" alt="image" src="https://github.com/user-attachments/assets/32201695-3682-4335-a1e1-c11525d285ab" />
 
 4. How to Install the Required Packages
-It is highly recommended to use a Python virtual environment to keep your project dependencies isolated.
+4.1 It is highly recommended to use a Python virtual environment to keep your project dependencies isolated.
 
 
 Create a Virtual Environment:
@@ -77,7 +77,7 @@ On macOS/Linux:
 **source venv/bin/activate**
 
 
-Install Libraries:
+4.2 Install Libraries:
 Now, with your virtual environment active, install all the required Python libraries with a single command:
 
 **pip install -r requirements.txt**
