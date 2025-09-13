@@ -23,7 +23,6 @@ if 'stop_event' not in st.session_state:
     st.session_state.stop_event = threading.Event()
 
 # --- VOSK WORKER THREAD ---
-# This function runs in the background and does the actual speech recognition.
 def vosk_worker(model_path, language, text_queue_ref, stop_event):
     try:
         model = vosk.Model(model_path)
@@ -38,39 +37,27 @@ def vosk_worker(model_path, language, text_queue_ref, stop_event):
         with sd.RawInputStream(samplerate=samplerate, blocksize=8000,
                                device=None, dtype='int16',
                                channels=1, callback=audio_callback):
-            
-            # The new KaldiRecognizer now includes partial word results
             rec = vosk.KaldiRecognizer(model, samplerate)
             rec.SetWords(True)
-
             print(f"INFO: [{language}] Vosk Worker is now listening.")
             
             while not stop_event.is_set():
                 try:
-                    data = audio_q.get(timeout=0.1) # Use a timeout to allow checking the stop_event
-                    
-                    # Check for final result
+                    data = audio_q.get(timeout=0.1)
                     if rec.AcceptWaveform(data):
                         result = json.loads(rec.Result())
                         if result.get('text'):
-                            # When a sentence is complete, send a "final" update
                             text_queue_ref.put({"type": "final", "text": result['text']})
                     else:
-                        # Check for partial result
                         partial_result = json.loads(rec.PartialResult())
                         if partial_result.get('partial'):
-                            # As the user speaks, send "partial" updates
                             text_queue_ref.put({"type": "partial", "text": partial_result['partial']})
                 except queue.Empty:
-                    # This is fine, just means no audio data in the last 0.1s
                     pass
-
         print(f"INFO: [{language}] Vosk Worker has gracefully stopped.")
-
     except Exception as e:
         error_message = f"ERROR: Error in Vosk worker for {language}: {e}"
         st.session_state.text_queue.put({"type": "error", "text": error_message})
-        print(error_message, file=sys.stderr)
 
 # --- Streamlit User Interface ---
 st.set_page_config(layout="wide", page_title="WhisperBoard")
@@ -86,12 +73,9 @@ language = st.sidebar.selectbox("Select Language", list(MODELS.keys()), disabled
 
 if st.sidebar.button("🔴 Start Recording" if not st.session_state.is_recording else "⏹️ Stop Recording"):
     if not st.session_state.is_recording:
-        # --- Start a new recording ---
         st.session_state.is_recording = True
-        st.session_state.stop_event.clear() # Reset the stop event
+        st.session_state.stop_event.clear()
         model_path = MODELS[language]
-        
-        # Create and start the new worker thread
         worker_thread = threading.Thread(
             target=vosk_worker, 
             args=(model_path, language, st.session_state.text_queue, st.session_state.stop_event)
@@ -99,13 +83,11 @@ if st.sidebar.button("🔴 Start Recording" if not st.session_state.is_recording
         st.session_state.vosk_worker_thread = worker_thread
         worker_thread.start()
     else:
-        # --- Stop the current recording ---
         st.session_state.is_recording = False
         if st.session_state.vosk_worker_thread:
             st.session_state.stop_event.set()
             st.session_state.vosk_worker_thread.join(timeout=1)
-        st.session_state.partial_text = "" # Clear partial text on stop
-
+        st.session_state.partial_text = ""
     st.rerun()
 
 if st.session_state.is_recording:
@@ -114,31 +96,23 @@ else:
     st.sidebar.success("Ready to record.")
 
 st.header("Transcription")
-# The text area now displays both the final text and the live partial text
 display_text = st.session_state.full_text + " " + st.session_state.partial_text
 st.text_area("Recognized Text", value=display_text.strip(), height=300, key="transcribed_text_display")
 
-# --- Logic to update the text area from the queue ---
 while not st.session_state.text_queue.empty():
     result = st.session_state.text_queue.get()
-    
     if result["type"] == "partial":
         st.session_state.partial_text = result["text"]
     elif result["type"] == "final":
-        # When a final result comes in, commit it to the full text
         st.session_state.full_text += " " + result["text"]
-        st.session_state.partial_text = "" # Clear the partial text
+        st.session_state.partial_text = ""
     elif result["type"] == "error":
         st.error(result["text"])
-    
-    # After processing just one item from the queue, we rerun to update the UI
     st.rerun()
 
-# --- The new, controlled refresh loop ---
 if st.session_state.is_recording:
-    time.sleep(0.1) # Wait for a tenth of a second
-    st.rerun() # Refresh the page to check for new text
+    time.sleep(0.1)
+    st.rerun()
 
 st.markdown("---")
 st.write("Built with ❤️ by **Gade Joseph Preetham Reddy** | [GitHub Repository](https://github.com/preetham-22/WhisperBoard)")
-
