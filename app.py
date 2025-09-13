@@ -1,127 +1,144 @@
 import streamlit as st
 import vosk
+import sounddevice as sd
 import queue
 import json
 import threading
 import sys
-from streamlit_webrtc import webrtc_streamer, WebRtcMode, AudioProcessorBase
+import time
 
 # --- Application State Management ---
+# Use Streamlit's session state to manage our app's state across reruns.
+if 'vosk_worker_thread' not in st.session_state:
+    st.session_state.vosk_worker_thread = None
+if 'text_queue' not in st.session_state:
+    st.session_state.text_queue = queue.Queue()
+if 'is_recording' not in st.session_state:
+    st.session_state.is_recording = False
 if 'full_text' not in st.session_state:
     st.session_state.full_text = ""
 if 'partial_text' not in st.session_state:
     st.session_state.partial_text = ""
+if 'stop_event' not in st.session_state:
+    st.session_state.stop_event = threading.Event()
 
-# --- Vosk Audio Processor ---
-# This class processes the audio frames from the browser's microphone stream.
-class VoskAudioProcessor(AudioProcessorBase):
-    def __init__(self, model_path, language):
-        self.model_path = model_path
-        self.language = language
-        self.text_queue = queue.Queue()
-        self.stop_event = threading.Event()
+# --- VOSK WORKER THREAD ---
+# This function runs in the background and does the actual speech recognition.
+def vosk_worker(model_path, language, text_queue_ref, stop_event):
+    try:
+        model = vosk.Model(model_path)
+        samplerate = 16000
+        audio_q = queue.Queue()
 
-    def recv(self, frame):
-        # This is the main callback that receives audio from the browser
-        # We start the Vosk worker thread here, when the first audio frame arrives.
-        if not hasattr(self, 'vosk_thread'):
-            self.vosk_thread = threading.Thread(target=self.vosk_worker, args=(frame.sample_rate,))
-            self.vosk_thread.start()
+        def audio_callback(indata, frames, time, status):
+            if status:
+                print(status, file=sys.stderr)
+            audio_q.put(bytes(indata))
 
-        # The audio from the browser is in a different format, so we need to convert it.
-        # Vosk needs raw PCM data (mono, 16-bit signed integer).
-        pcm_data = frame.to_ndarray(format="s16", layout="mono").tobytes()
-        self.audio_queue.put(pcm_data)
-
-        # We must return the audio frame to the browser
-        return frame
-
-    def vosk_worker(self, samplerate):
-        # This is our AI brain, running in the background.
-        try:
-            model = vosk.Model(self.model_path)
+        with sd.RawInputStream(samplerate=samplerate, blocksize=8000,
+                               device=None, dtype='int16',
+                               channels=1, callback=audio_callback):
+            
+            # The new KaldiRecognizer now includes partial word results
             rec = vosk.KaldiRecognizer(model, samplerate)
             rec.SetWords(True)
-            self.audio_queue = queue.Queue()
+
+            print(f"INFO: [{language}] Vosk Worker is now listening.")
             
-            print(f"INFO: [{self.language}] Vosk Worker is now listening.")
-            
-            while not self.stop_event.is_set():
+            while not stop_event.is_set():
                 try:
-                    data = self.audio_queue.get(timeout=0.1)
+                    data = audio_q.get(timeout=0.1) # Use a timeout to allow checking the stop_event
                     
+                    # Check for final result
                     if rec.AcceptWaveform(data):
                         result = json.loads(rec.Result())
                         if result.get('text'):
-                            self.text_queue.put({"type": "final", "text": result['text']})
+                            # When a sentence is complete, send a "final" update
+                            text_queue_ref.put({"type": "final", "text": result['text']})
                     else:
+                        # Check for partial result
                         partial_result = json.loads(rec.PartialResult())
                         if partial_result.get('partial'):
-                            self.text_queue.put({"type": "partial", "text": partial_result['partial']})
+                            # As the user speaks, send "partial" updates
+                            text_queue_ref.put({"type": "partial", "text": partial_result['partial']})
                 except queue.Empty:
+                    # This is fine, just means no audio data in the last 0.1s
                     pass
-            print(f"INFO: [{self.language}] Vosk Worker has stopped.")
-        except Exception as e:
-            error_message = f"ERROR: Error in Vosk worker for {self.language}: {e}"
-            self.text_queue.put({"type": "error", "text": error_message})
-            print(error_message, file=sys.stderr)
 
-    def on_ended(self):
-        # This is called when the WebRTC connection is closed.
-        self.stop_event.set()
-        if hasattr(self, 'vosk_thread'):
-            self.vosk_thread.join()
+        print(f"INFO: [{language}] Vosk Worker has gracefully stopped.")
+
+    except Exception as e:
+        error_message = f"ERROR: Error in Vosk worker for {language}: {e}"
+        st.session_state.text_queue.put({"type": "error", "text": error_message})
+        print(error_message, file=sys.stderr)
 
 # --- Streamlit User Interface ---
 st.set_page_config(layout="wide", page_title="WhisperBoard")
 st.title("🎤 WhisperBoard")
-st.markdown("A privacy-focused, multi-language speech recognition web app. Built for the Pragna Hackathon.")
+st.markdown("A privacy-focused, multi-language speech recognition app powered by **Vosk**. Built for the Pragna Hackathon.")
 
 st.sidebar.header("Controls")
 MODELS = {
     "English (US)": "model",
     "Hindi (हिन्दी)": "model-hi"
 }
-language = st.sidebar.selectbox("Select Language", list(MODELS.keys()))
+language = st.sidebar.selectbox("Select Language", list(MODELS.keys()), disabled=st.session_state.is_recording)
+
+if st.sidebar.button("🔴 Start Recording" if not st.session_state.is_recording else "⏹️ Stop Recording"):
+    if not st.session_state.is_recording:
+        # --- Start a new recording ---
+        st.session_state.is_recording = True
+        st.session_state.stop_event.clear() # Reset the stop event
+        model_path = MODELS[language]
+        
+        # Create and start the new worker thread
+        worker_thread = threading.Thread(
+            target=vosk_worker, 
+            args=(model_path, language, st.session_state.text_queue, st.session_state.stop_event)
+        )
+        st.session_state.vosk_worker_thread = worker_thread
+        worker_thread.start()
+    else:
+        # --- Stop the current recording ---
+        st.session_state.is_recording = False
+        if st.session_state.vosk_worker_thread:
+            st.session_state.stop_event.set()
+            st.session_state.vosk_worker_thread.join(timeout=1)
+        st.session_state.partial_text = "" # Clear partial text on stop
+
+    st.rerun()
+
+if st.session_state.is_recording:
+    st.sidebar.info("Recording started... Speak into your microphone.")
+else:
+    st.sidebar.success("Ready to record.")
 
 st.header("Transcription")
-text_placeholder = st.empty() # We'll use this to display live text
+# The text area now displays both the final text and the live partial text
+display_text = st.session_state.full_text + " " + st.session_state.partial_text
+st.text_area("Recognized Text", value=display_text.strip(), height=300, key="transcribed_text_display")
 
-# The webrtc_streamer component is the core of our web app now
-webrtc_ctx = webrtc_streamer(
-    key="speech-to-text",
-    mode=WebRtcMode.SEND_ONLY,
-    audio_processor_factory=lambda: VoskAudioProcessor(MODELS[language], language),
-    media_stream_constraints={"video": False, "audio": True},
-)
+# --- Logic to update the text area from the queue ---
+while not st.session_state.text_queue.empty():
+    result = st.session_state.text_queue.get()
+    
+    if result["type"] == "partial":
+        st.session_state.partial_text = result["text"]
+    elif result["type"] == "final":
+        # When a final result comes in, commit it to the full text
+        st.session_state.full_text += " " + result["text"]
+        st.session_state.partial_text = "" # Clear the partial text
+    elif result["type"] == "error":
+        st.error(result["text"])
+    
+    # After processing just one item from the queue, we rerun to update the UI
+    st.rerun()
 
-if not webrtc_ctx.state.playing:
-    st.sidebar.success("Ready to record.")
-else:
-    st.sidebar.info("Recording started... Speak into your microphone.")
-
-# Logic to update the text display
-while webrtc_ctx.state.playing:
-    if webrtc_ctx.audio_processor:
-        try:
-            result = webrtc_ctx.audio_processor.text_queue.get(timeout=0.1)
-            
-            if result["type"] == "partial":
-                st.session_state.partial_text = result["text"]
-            elif result["type"] == "final":
-                st.session_state.full_text += " " + result["text"]
-                st.session_state.partial_text = ""
-            elif result["type"] == "error":
-                st.error(result["text"])
-                break
-            
-            display_text = st.session_state.full_text + " " + st.session_state.partial_text
-            text_placeholder.text_area("Recognized Text", value=display_text.strip(), height=300)
-
-        except queue.Empty:
-            pass
-    else:
-        break
+# --- The new, controlled refresh loop ---
+if st.session_state.is_recording:
+    time.sleep(0.1) # Wait for a tenth of a second
+    st.rerun() # Refresh the page to check for new text
 
 st.markdown("---")
-st.write("Built with ❤️ by **Gade Joseph Preetham Reddy** | [GitHub Repository](https://github.com/preetham-22/WhisperBoard-Final-Submission)")
+st.write("Built with ❤️ by **Gade Joseph Preetham Reddy** | [GitHub Repository](https://github.com/preetham-22/WhisperBoard)")
+
