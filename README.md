@@ -63,27 +63,32 @@ WhisperBoard/
 4. How to Install the Required Packages
 It is highly recommended to use a Python virtual environment to keep your project dependencies isolated.
 
+
 Create a Virtual Environment:
 From your terminal, inside the WhisperBoard folder, run:
 
-python -m venv venv
+**python -m venv venv**
 
 Activate the Virtual Environment:
 
+
 On Windows:
 
-venv\Scripts\activate
+**venv\Scripts\activate**
+
 
 On macOS/Linux:
 
-source venv/bin/activate
+**source venv/bin/activate**
+
 
 Install Libraries:
 Now, with your virtual environment active, install all the required Python libraries with a single command:
 
-pip install -r requirements.txt
+**pip install -r requirements.txt**
+
 
 5. How to Run the Application
 You're all set! To launch the app, run the following command in your terminal:
 
-streamlit run app.py
+**streamlit run app.py**
