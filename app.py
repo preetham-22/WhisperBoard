@@ -6,6 +6,7 @@ import json
 import threading
 import sys
 import time
+import os
 
 # --- Application State Management ---
 # Use Streamlit's session state to manage our app's state across reruns.
@@ -21,98 +22,336 @@ if 'partial_text' not in st.session_state:
     st.session_state.partial_text = ""
 if 'stop_event' not in st.session_state:
     st.session_state.stop_event = threading.Event()
+if 'model_loaded' not in st.session_state:
+    st.session_state.model_loaded = {}
+if 'audio_initialized' not in st.session_state:
+    st.session_state.audio_initialized = False
+
+# --- MODEL LOADING ---
+@st.cache_resource
+def load_vosk_model(model_path):
+    """Load and cache Vosk model"""
+    try:
+        if not os.path.exists(model_path):
+            return None, f"Model directory not found: {model_path}"
+        
+        model = vosk.Model(model_path)
+        return model, "Model loaded successfully"
+    except Exception as e:
+        return None, f"Error loading model: {str(e)}"
+
+# --- AUDIO DEVICE CHECK ---
+def check_audio_devices():
+    """Check if audio input devices are available"""
+    try:
+        devices = sd.query_devices()
+        input_devices = [d for d in devices if d['max_input_channels'] > 0]
+        return len(input_devices) > 0, input_devices
+    except Exception as e:
+        return False, str(e)
 
 # --- VOSK WORKER THREAD ---
-def vosk_worker(model_path, language, text_queue_ref, stop_event):
+def vosk_worker(model, language, text_queue_ref, stop_event):
+    """
+    Background thread that handles audio capture and speech recognition.
+    This runs separately from the Streamlit main thread to prevent UI freezing.
+    """
     try:
-        model = vosk.Model(model_path)
+        # Audio configuration
         samplerate = 16000
-        audio_q = queue.Queue()
+        blocksize = 8000
+        audio_queue = queue.Queue()
 
         def audio_callback(indata, frames, time, status):
+            """Callback function to capture audio data from microphone"""
             if status:
-                print(status, file=sys.stderr)
-            audio_q.put(bytes(indata))
+                print(f"Audio status: {status}", file=sys.stderr)
+            # Convert audio data to bytes and add to queue
+            audio_queue.put(bytes(indata))
 
-        with sd.RawInputStream(samplerate=samplerate, blocksize=8000,
-                               device=None, dtype='int16',
-                               channels=1, callback=audio_callback):
-            rec = vosk.KaldiRecognizer(model, samplerate)
-            rec.SetWords(True)
-            print(f"INFO: [{language}] Vosk Worker is now listening.")
+        # Initialize Vosk recognizer
+        recognizer = vosk.KaldiRecognizer(model, samplerate)
+        recognizer.SetWords(True)
+        
+        # Signal that we're starting to listen
+        text_queue_ref.put({"type": "status", "text": f"🎙️ Listening with {language} model..."})
+        print(f"INFO: [{language}] Vosk Worker started - listening for speech...")
+        
+        # Start audio input stream
+        with sd.RawInputStream(
+            samplerate=samplerate, 
+            blocksize=blocksize,
+            device=None,  # Use default input device
+            dtype='int16',
+            channels=1, 
+            callback=audio_callback
+        ):
             
+            # Main recognition loop
             while not stop_event.is_set():
                 try:
-                    data = audio_q.get(timeout=0.1)
-                    if rec.AcceptWaveform(data):
-                        result = json.loads(rec.Result())
-                        if result.get('text'):
-                            text_queue_ref.put({"type": "final", "text": result['text']})
+                    # Get audio data from queue (with timeout to check stop_event regularly)
+                    data = audio_queue.get(timeout=0.1)
+                    
+                    # Process audio data with Vosk
+                    if recognizer.AcceptWaveform(data):
+                        # Final result - complete utterance recognized
+                        result = json.loads(recognizer.Result())
+                        if result.get('text', '').strip():
+                            text_queue_ref.put({
+                                "type": "final", 
+                                "text": result['text'].strip()
+                            })
                     else:
-                        partial_result = json.loads(rec.PartialResult())
-                        if partial_result.get('partial'):
-                            text_queue_ref.put({"type": "partial", "text": partial_result['partial']})
+                        # Partial result - ongoing recognition
+                        partial_result = json.loads(recognizer.PartialResult())
+                        if partial_result.get('partial', '').strip():
+                            text_queue_ref.put({
+                                "type": "partial", 
+                                "text": partial_result['partial'].strip()
+                            })
+                            
                 except queue.Empty:
-                    pass
-        print(f"INFO: [{language}] Vosk Worker has gracefully stopped.")
+                    # No audio data available, continue loop
+                    continue
+                except Exception as e:
+                    print(f"Error in recognition loop: {e}", file=sys.stderr)
+                    break
+        
+        # Cleanup
+        print(f"INFO: [{language}] Vosk Worker stopped gracefully.")
+        text_queue_ref.put({"type": "status", "text": "⏹️ Recording stopped."})
+        
     except Exception as e:
-        error_message = f"ERROR: Error in Vosk worker for {language}: {e}"
-        st.session_state.text_queue.put({"type": "error", "text": error_message})
+        error_message = f"ERROR: Vosk worker error for {language}: {str(e)}"
+        print(error_message, file=sys.stderr)
+        text_queue_ref.put({"type": "error", "text": error_message})
 
 # --- Streamlit User Interface ---
-st.set_page_config(layout="wide", page_title="WhisperBoard")
-st.title("🎤 WhisperBoard")
-st.markdown("A privacy-focused, multi-language speech recognition app powered by **Vosk**. Built for the Pragna Hackathon.")
+st.set_page_config(layout="wide", page_title="WhisperBoard - Live Demo")
+st.title("🎤 WhisperBoard - Live Speech Recognition")
+st.markdown("**Real-time speech-to-text powered by Vosk** | Built for the Pragna Hackathon")
 
-st.sidebar.header("Controls")
+# Check audio system
+if not st.session_state.audio_initialized:
+    with st.spinner("Checking audio system..."):
+        audio_ok, audio_info = check_audio_devices()
+        st.session_state.audio_initialized = True
+        
+        if not audio_ok:
+            st.error("🎤 **No microphone detected!**")
+            st.error("Please ensure your microphone is connected and try refreshing the page.")
+            st.stop()
+
+# Sidebar controls
+st.sidebar.header("🎛️ Controls")
+
+# Language selection
 MODELS = {
     "English (US)": "model",
     "Hindi (हिन्दी)": "model-hi"
 }
-language = st.sidebar.selectbox("Select Language", list(MODELS.keys()), disabled=st.session_state.is_recording)
 
-if st.sidebar.button("🔴 Start Recording" if not st.session_state.is_recording else "⏹️ Stop Recording"):
+language = st.sidebar.selectbox(
+    "Select Language", 
+    list(MODELS.keys()), 
+    disabled=st.session_state.is_recording,
+    help="Choose the language for speech recognition"
+)
+
+# Load model for selected language
+model_path = MODELS[language]
+if language not in st.session_state.model_loaded:
+    with st.spinner(f"Loading {language} model..."):
+        model, message = load_vosk_model(model_path)
+        st.session_state.model_loaded[language] = model
+        
+        if model is None:
+            st.sidebar.error(f"❌ {message}")
+            st.error(f"**Model Loading Failed**: {message}")
+            
+            # Provide download instructions
+            st.info("� **To download Vosk models:**")
+            if language == "English (US)":
+                st.code("""
+# Download English model
+wget https://alphacephei.com/vosk/models/vosk-model-en-us-0.22.zip
+unzip vosk-model-en-us-0.22.zip
+mv vosk-model-en-us-0.22 model
+                """)
+            else:
+                st.code("""
+# Download Hindi model
+wget https://alphacephei.com/vosk/models/vosk-model-hi-0.22.zip
+unzip vosk-model-hi-0.22.zip
+mv vosk-model-hi-0.22 model-hi
+                """)
+            st.stop()
+        else:
+            st.sidebar.success(f"✅ {language} model loaded")
+
+# Recording button
+model = st.session_state.model_loaded[language]
+button_text = "⏹️ Stop Recording" if st.session_state.is_recording else "🔴 Start Recording"
+button_disabled = model is None
+
+if st.sidebar.button(button_text, disabled=button_disabled):
     if not st.session_state.is_recording:
+        # Start recording
         st.session_state.is_recording = True
         st.session_state.stop_event.clear()
-        model_path = MODELS[language]
+        
+        # Clear previous text
+        st.session_state.full_text = ""
+        st.session_state.partial_text = ""
+        
+        # Start background worker thread
         worker_thread = threading.Thread(
-            target=vosk_worker, 
-            args=(model_path, language, st.session_state.text_queue, st.session_state.stop_event)
+            target=vosk_worker,
+            args=(model, language, st.session_state.text_queue, st.session_state.stop_event),
+            daemon=True  # Thread will close when main program closes
         )
         st.session_state.vosk_worker_thread = worker_thread
         worker_thread.start()
+        
     else:
+        # Stop recording
         st.session_state.is_recording = False
-        if st.session_state.vosk_worker_thread:
+        
+        # Signal worker thread to stop
+        if st.session_state.vosk_worker_thread and st.session_state.vosk_worker_thread.is_alive():
             st.session_state.stop_event.set()
-            st.session_state.vosk_worker_thread.join(timeout=1)
+            st.session_state.vosk_worker_thread.join(timeout=2.0)
+        
+        # Clear partial text
         st.session_state.partial_text = ""
+    
+    # Refresh the page to update UI
     st.rerun()
 
+# Status display
 if st.session_state.is_recording:
-    st.sidebar.info("Recording started... Speak into your microphone.")
+    st.sidebar.info("🎙️ **LIVE** - Speak into your microphone")
+    st.sidebar.write("The app is listening and transcribing in real-time!")
+elif model:
+    st.sidebar.success("✅ Ready to record")
 else:
-    st.sidebar.success("Ready to record.")
+    st.sidebar.warning("⚠️ Model not loaded")
 
-st.header("Transcription")
-display_text = st.session_state.full_text + " " + st.session_state.partial_text
-st.text_area("Recognized Text", value=display_text.strip(), height=300, key="transcribed_text_display")
+# Main content area
+col1, col2 = st.columns([3, 1])
 
+with col1:
+    st.header("📝 Live Transcription")
+    
+    # Combine full text and partial text for display
+    display_text = st.session_state.full_text
+    if st.session_state.partial_text:
+        # Add partial text with visual indicator
+        display_text += (" " if display_text else "") + st.session_state.partial_text + " ●"
+    
+    # Display transcription in real-time
+    transcription_placeholder = st.text_area(
+        "Real-time Speech Recognition",
+        value=display_text,
+        height=400,
+        disabled=True,
+        help="Live transcription will appear here as you speak"
+    )
+    
+    # Control buttons
+    col_clear, col_copy = st.columns(2)
+    with col_clear:
+        if st.button("🗑️ Clear Text", disabled=st.session_state.is_recording):
+            st.session_state.full_text = ""
+            st.session_state.partial_text = ""
+            st.rerun()
+    
+    with col_copy:
+        if st.session_state.full_text:
+            st.download_button(
+                label="📋 Download Text",
+                data=st.session_state.full_text,
+                file_name=f"transcription_{language.lower().replace(' ', '_')}.txt",
+                mime="text/plain"
+            )
+
+with col2:
+    st.header("ℹ️ Status")
+    
+    # Current configuration
+    st.subheader("Configuration")
+    st.write(f"**Language:** {language}")
+    st.write(f"**Model:** {model_path}")
+    st.write(f"**Status:** {'🔴 Recording' if st.session_state.is_recording else '⏸️ Idle'}")
+    
+    # Instructions
+    st.subheader("How to Use")
+    st.write("1. Select your language")
+    st.write("2. Click 'Start Recording'")
+    st.write("3. Speak clearly into microphone")
+    st.write("4. Watch live transcription")
+    st.write("5. Click 'Stop Recording' when done")
+    
+    # Tips
+    st.subheader("💡 Tips")
+    st.write("• Speak at normal pace")
+    st.write("• Minimize background noise")
+    st.write("• Use a quality microphone")
+    st.write("• Stay close to the microphone")
+    
+    # Word count
+    if st.session_state.full_text:
+        word_count = len(st.session_state.full_text.split())
+        st.metric("Words Transcribed", word_count)
+
+# Process messages from background thread
+message_processed = False
 while not st.session_state.text_queue.empty():
-    result = st.session_state.text_queue.get()
-    if result["type"] == "partial":
-        st.session_state.partial_text = result["text"]
-    elif result["type"] == "final":
-        st.session_state.full_text += " " + result["text"]
-        st.session_state.partial_text = ""
-    elif result["type"] == "error":
-        st.error(result["text"])
+    try:
+        result = st.session_state.text_queue.get_nowait()
+        message_processed = True
+        
+        if result["type"] == "partial":
+            # Update partial text (ongoing recognition)
+            st.session_state.partial_text = result["text"]
+            
+        elif result["type"] == "final":
+            # Add final text (completed utterance)
+            if st.session_state.full_text:
+                st.session_state.full_text += " " + result["text"]
+            else:
+                st.session_state.full_text = result["text"]
+            st.session_state.partial_text = ""
+            
+        elif result["type"] == "error":
+            # Display error
+            st.error(f"🚨 **Recognition Error:** {result['text']}")
+            st.session_state.is_recording = False
+            
+        elif result["type"] == "status":
+            # Show status update
+            st.sidebar.info(result["text"])
+            
+    except queue.Empty:
+        break
+
+# Auto-refresh while recording to show live updates
+if st.session_state.is_recording or message_processed:
+    time.sleep(0.1)  # Small delay to prevent excessive refreshing
     st.rerun()
 
-if st.session_state.is_recording:
-    time.sleep(0.1)
-    st.rerun()
-
+# Footer
 st.markdown("---")
-st.write("Built with ❤️ by **Gade Joseph Preetham Reddy** | [GitHub Repository](https://github.com/preetham-22/WhisperBoard)")
+st.markdown("""
+### 🎯 About This Demo
+
+This is a **live demonstration** of WhisperBoard's speech recognition capabilities:
+
+- **🎙️ Real-time Processing:** Your speech is transcribed as you speak
+- **🔒 100% Private:** All processing happens locally on your device
+- **🌐 Multi-language:** Supports English and Hindi recognition
+- **⚡ Fast & Accurate:** Powered by the Vosk speech recognition toolkit
+
+**Built with ❤️ by Gade Joseph Preetham Reddy** | [GitHub Repository](https://github.com/preetham-22/WhisperBoard)
+""")
