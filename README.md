@@ -31,6 +31,35 @@ This journey highlights a crucial real-world engineering skill: adapting to brok
 
 Beyond the core application, a custom Language Model (LM) was successfully trained using the **KenLM** toolkit. This new model (`lm.arpa`) was trained on a custom corpus of technical jargon ("Vosk", "Streamlit", "Lomiri", etc.) and is designed to be integrated into the Vosk model to significantly improve the recognition accuracy for domain-specific terms.
 
+## 📦 How to Install and Use
+
+Ready to use WhisperBoard on your Lomiri/Ubuntu Touch device? Follow these simple steps:
+
+### 1. Download the Package
+Visit the [Releases](https://github.com/preetham-22/WhisperBoard/releases) page of this repository and download the latest `.click` package file (e.g., `whisperboard.preetham22_1.0.0_all.click`).
+
+### 2. Transfer to Device
+Use the Android Debug Bridge (adb) to transfer the package to your device's Downloads folder:
+
+```bash
+adb push whisperboard.preetham22_1.0.0_all.click /home/phablet/Downloads/
+```
+
+### 3. Install the App
+On your Lomiri device, open a terminal and run the following command to install the package:
+
+```bash
+pkcon install-local --allow-untrusted ~/Downloads/whisperboard.preetham22_1.0.0_all.click
+```
+
+### 4. Enable the Keyboard
+Finally, enable WhisperBoard in your system settings:
+1. Navigate to **System Settings** → **Keyboard** → **Manage**
+2. Find "WhisperBoard" in the list
+3. Toggle it **ON** to activate the speech-to-text keyboard
+
+That's it! You can now use WhisperBoard for real-time speech-to-text input across all your applications.
+
 ### 🛠️ How to Build
 
 This project is configured to be built in a cloud development environment.
