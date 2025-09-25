@@ -1,0 +1,7 @@
+vosk is a speech recognition toolkit
+i am building an app with streamlit
+the lomiri operating system uses qml
+whisperboard is the name of my project
+this project uses kaldi and python
+i am testing my app on ubuntu touch
+clickable is the build tool for lomiri

@@ -14,4 +14,4 @@ model/
 model-hi/
 
 Streamlit
-.streamlit/
+.streamlit/whisperboard/kenlm/

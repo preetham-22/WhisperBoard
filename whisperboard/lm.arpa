@@ -1,0 +1,99 @@
+\data\
+ngram 1=39
+ngram 2=51
+
+\1-grams:
+-1.7263688	<unk>	0
+0	<s>	-0.30103
+-1.0122954	</s>	0
+-1.6105487	vosk	-0.30103
+-1.7263688	is	-0.30103
+-1.6105487	a	-0.30103
+-1.6105487	speech	-0.30103
+-1.6105487	recognition	-0.30103
+-1.6105487	toolkit	-0.30103
+-1.6105487	i	-0.30103
+-1.6105487	am	-0.30103
+-1.6105487	building	-0.30103
+-1.6105487	an	-0.30103
+-1.5898693	app	-0.30103
+-1.6105487	with	-0.30103
+-1.6105487	streamlit	-0.30103
+-1.5898693	the	-0.30103
+-1.5898693	lomiri	-0.30103
+-1.6105487	operating	-0.30103
+-1.6105487	system	-0.30103
+-1.5898693	uses	-0.30103
+-1.6105487	qml	-0.30103
+-1.6105487	whisperboard	-0.30103
+-1.6105487	name	-0.30103
+-1.6105487	of	-0.30103
+-1.5898693	my	-0.30103
+-1.5898693	project	-0.30103
+-1.6105487	this	-0.30103
+-1.6105487	kaldi	-0.30103
+-1.6105487	and	-0.30103
+-1.6105487	python	-0.30103
+-1.6105487	testing	-0.30103
+-1.6105487	on	-0.30103
+-1.6105487	ubuntu	-0.30103
+-1.6105487	touch	-0.30103
+-1.6105487	clickable	-0.30103
+-1.6105487	build	-0.30103
+-1.6105487	tool	-0.30103
+-1.6105487	for	-0.30103
+
+\2-grams:
+-0.2607408	toolkit </s>
+-0.2607408	streamlit </s>
+-0.52490395	lomiri </s>
+-0.2607408	qml </s>
+-0.52490395	project </s>
+-0.2607408	python </s>
+-0.2607408	touch </s>
+-1.077344	<s> vosk
+-0.29295075	vosk is
+-0.29295075	whisperboard is
+-0.29295075	clickable is
+-0.74732965	is a
+-0.29051122	a speech
+-0.29051122	speech recognition
+-0.29051122	recognition toolkit
+-0.8093456	<s> i
+-0.29051122	i am
+-0.5812712	am building
+-0.29051122	building an
+-0.2900047	an app
+-0.58028233	my app
+-0.5812712	app with
+-0.29051122	with streamlit
+-1.0742526	<s> the
+-0.4606865	is the
+-0.7458811	the lomiri
+-0.2900047	for lomiri
+-0.5812712	lomiri operating
+-0.29051122	operating system
+-0.2900047	system uses
+-0.58028233	project uses
+-0.5812712	uses qml
+-1.077344	<s> whisperboard
+-0.74732965	the name
+-0.29051122	name of
+-0.2900047	of my
+-0.2900047	testing my
+-0.58028233	my project
+-0.2900047	this project
+-1.077344	<s> this
+-0.5812712	uses kaldi
+-0.29051122	kaldi and
+-0.29051122	and python
+-0.5812712	am testing
+-0.5812712	app on
+-0.29051122	on ubuntu
+-0.29051122	ubuntu touch
+-1.077344	<s> clickable
+-0.74732965	the build
+-0.29051122	build tool
+-0.29051122	tool for
+
+\end\
