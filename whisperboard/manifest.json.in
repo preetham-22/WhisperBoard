@@ -1,0 +1,15 @@
+{
+    "name": "whisperboard.preetham22",
+    "description": "A privacy-first, offline speech-to-text keyboard for the Lomiri OS, powered by Vosk.",
+    "architecture": "@CLICK_ARCH@",
+    "title": "WhisperBoard",
+    "hooks": {
+        "whisperboard": {
+            "apparmor": "whisperboard.apparmor",
+            "desktop":  "whisperboard.desktop"
+        }
+    },
+    "version": "1.0.0",
+    "maintainer": "Gade Joseph Preetham Reddy <preethamreddy2226@gmail.com>",
+    "framework" : "@CLICK_FRAMEWORK@"
+}
