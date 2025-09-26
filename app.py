@@ -148,8 +148,9 @@ st.sidebar.header("🎛️ Controls")
 
 # Language selection
 MODELS = {
-    "English (US)": "model",
-    "Hindi (हिन्दी)": "model-hi"
+    "English (US)": "model-English",
+    "Hindi (हिन्दी)": "model-Hindi",
+    "Telugu (తెలుగు)": "model-Telugu"
 }
 
 language = st.sidebar.selectbox(
@@ -249,6 +250,9 @@ with col1:
     if st.session_state.partial_text:
         # Add partial text with visual indicator
         display_text += (" " if display_text else "") + st.session_state.partial_text + " ●"
+    elif st.session_state.is_recording and language == "Telugu (తెలుగు)" and not st.session_state.full_text:
+        # Special message for Telugu model (no partial results)
+        display_text = "🎙️ తెలుగు లో మాట్లాడండి... (Speak in Telugu - results appear after complete phrases) ●"
     
     # Display transcription in real-time
     transcription_placeholder = st.text_area(
@@ -293,12 +297,22 @@ with col2:
     st.write("4. Watch live transcription")
     st.write("5. Click 'Stop Recording' when done")
     
+    # Special note for Telugu
+    if language == "Telugu (తెలుగు)":
+        st.info("📝 **Telugu Note**: Text appears after complete phrases (no live preview while speaking)")
+    
     # Tips
     st.subheader("💡 Tips")
     st.write("• Speak at normal pace")
     st.write("• Minimize background noise")
     st.write("• Use a quality microphone")
     st.write("• Stay close to the microphone")
+    
+    # Language-specific tips
+    if language == "Telugu (తెలుగు)":
+        st.write("• **Telugu**: Speak complete words/phrases")
+        st.write("• **Telugu**: Pause briefly between sentences")
+        st.write("• **Telugu**: Results appear after you finish speaking")
     
     # Word count
     if st.session_state.full_text:
