@@ -1,13 +1,42 @@
 # WhisperBoard 🎤
 
-A privacy-focused, multi-language, real-time speech-to-text keyboard for the Lomiri (Ubuntu Touch) OS. This project was built for the **Pragna National Level Open-Source Hackathon**.
+A privacy-focused, multi-language, real-time speech-to-text keyboard for the Lomiri (U### 📁 Project Structure
+```
+WhisperBoard/
+├── whisperboard/           # Clickable app source directory
+│   ├── clickable.yaml      # Clickable configuration
+│   ├── manifest.json       # App metadata
+│   └── ...                 # Other QML/Python files
+├── model-English/          # English (US) Vosk model (download required)
+├── model-Hindi/            # Hindi (हिन्दी) Vosk model (download required)  
+├── model-Telugu/           # Telugu (తెలుగు) Vosk model (download required)
+├── app.py                  # Streamlit web application
+├── test_audio_recognition.py # Model testing script
+├── test_telugu_model.py    # Telugu model debugging script
+├── requirements.txt        # Python dependencies
+├── LICENSE                 # AGPL-3.0 License
+└── README.md               # You are here!
+```
+
+### 🤖 Language Models
+
+WhisperBoard uses specialized Vosk models for each supported language:
+
+| Language | Model Directory | Features |
+|----------|-----------------|----------|
+| **English (US)** | `model-English/` | High accuracy, fast recognition, partial results |
+| **Hindi (हिन्दी)** | `model-Hindi/` | Devanagari script support, partial results |  
+| **Telugu (తెలుగు)** | `model-Telugu/` | Telugu script support, complete phrase recognition |
+
+**Note:** Model files are large (100+ MB each) and are distributed separately via GitHub Releases.OS. This project was built for the **Pragna National Level Open-Source Hackathon**.
 
 ### ✨ Key Features
 
 * **Real-time Transcription:** Converts speech to text live on the device.
-* **Multi-Language Support:** Designed with a framework to support multiple languages, starting with English and Hindi.
+* **Multi-Language Support:** Supports English, Hindi, and Telugu with dedicated Vosk models.
 * **100% Offline & Private:** All AI processing happens on the device using the Vosk toolkit, ensuring user voice data remains completely private.
 * **Open Source:** Built entirely with free and open-source tools.
+* **Easy Model Distribution:** Pre-trained models available as downloadable packages.
 
 ### � Final Status
 
@@ -33,9 +62,36 @@ Beyond the core application, a custom Language Model (LM) was successfully train
 
 ## 📦 How to Install and Use
 
-Ready to use WhisperBoard on your Lomiri/Ubuntu Touch device? Follow these simple steps:
+Ready to use WhisperBoard? Follow these simple steps:
 
-### 1. Download the Package
+### For Streamlit Web Application:
+
+#### 1. Download Model Files
+Visit the [Releases](https://github.com/preetham-22/WhisperBoard/releases) page and download the **WhisperBoard-Models.zip** file containing all language models.
+
+#### 2. Extract Models
+Extract the downloaded zip file to your project directory. You should have:
+```
+WhisperBoard/
+├── model-English/     # English (US) language model
+├── model-Hindi/       # Hindi (हिन्दी) language model
+├── model-Telugu/      # Telugu (తెలుగు) language model
+└── app.py            # Main application file
+```
+
+#### 3. Install Dependencies
+```bash
+pip install -r requirements.txt
+```
+
+#### 4. Run the Application
+```bash
+streamlit run app.py
+```
+
+### For Lomiri/Ubuntu Touch Users:
+
+#### 1. Download the Package
 Visit the [Releases](https://github.com/preetham-22/WhisperBoard/releases) page of this repository and download the latest `.click` package file (e.g., `whisperboard.preetham22_1.0.0_all.click`).
 
 ### 2. Transfer to Device
