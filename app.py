@@ -7,6 +7,10 @@ import threading
 import sys
 import time
 import os
+import wave
+import numpy as np
+from io import BytesIO
+import scipy.signal
 
 # --- Application State Management ---
 # Use Streamlit's session state to manage our app's state across reruns.
@@ -26,6 +30,10 @@ if 'model_loaded' not in st.session_state:
     st.session_state.model_loaded = {}
 if 'audio_initialized' not in st.session_state:
     st.session_state.audio_initialized = False
+if 'uploaded_file_text' not in st.session_state:
+    st.session_state.uploaded_file_text = ""
+if 'processing_file' not in st.session_state:
+    st.session_state.processing_file = False
 
 # --- MODEL LOADING ---
 @st.cache_resource
@@ -49,6 +57,104 @@ def check_audio_devices():
         return len(input_devices) > 0, input_devices
     except Exception as e:
         return False, str(e)
+
+# --- AUDIO FILE PROCESSING ---
+def process_audio_file(model, audio_file, language):
+    """Process uploaded audio file and return transcription"""
+    try:
+        if model is None:
+            return None, f"Model for {language} is not available"
+        
+        # Read the uploaded file
+        audio_bytes = audio_file.read()
+        
+        if len(audio_bytes) == 0:
+            return None, "Audio file is empty"
+        
+        # Create a BytesIO object from the audio bytes
+        audio_io = BytesIO(audio_bytes)
+        
+        # Open the audio file with wave
+        with wave.open(audio_io, 'rb') as wf:
+            # Get file properties
+            channels = wf.getnchannels()
+            sampwidth = wf.getsampwidth()
+            sample_rate = wf.getframerate()
+            frames = wf.getnframes()
+            
+            # Provide detailed file info for debugging
+            print(f"Audio file info: {channels} channels, {sampwidth*8}-bit, {sample_rate}Hz, {frames} frames")
+            
+            # Check file format requirements
+            if channels != 1:
+                return None, f"Audio file must be mono (single channel), found {channels} channels"
+            
+            if sampwidth != 2:
+                return None, f"Audio file must be 16-bit, found {sampwidth*8}-bit"
+            
+            if frames == 0:
+                return None, "Audio file contains no audio frames"
+            
+            # Read all audio data
+            audio_data = wf.readframes(frames)
+            
+            # Convert to numpy array for processing
+            audio_array = np.frombuffer(audio_data, dtype=np.int16)
+            
+            # Handle sample rate conversion if needed
+            if sample_rate != 16000:
+                print(f"Converting sample rate from {sample_rate}Hz to 16000Hz")
+                # Calculate the number of samples for 16kHz
+                target_samples = int(len(audio_array) * 16000 / sample_rate)
+                # Resample the audio
+                audio_array = scipy.signal.resample(audio_array, target_samples).astype(np.int16)
+                sample_rate = 16000
+            
+        # Initialize recognizer with 16kHz sample rate
+        recognizer = vosk.KaldiRecognizer(model, 16000)
+        recognizer.SetWords(True)
+        
+        transcription_parts = []
+        
+        # Process audio in chunks
+        chunk_size = 4000  # Process 4000 samples at a time
+        total_samples = len(audio_array)
+        
+        print(f"Processing {total_samples} samples in chunks of {chunk_size}")
+        
+        for i in range(0, total_samples, chunk_size):
+            # Get chunk of audio data
+            chunk = audio_array[i:i + chunk_size]
+            
+            # Convert chunk to bytes
+            chunk_bytes = chunk.tobytes()
+            
+            if recognizer.AcceptWaveform(chunk_bytes):
+                result = json.loads(recognizer.Result())
+                if result.get('text', '').strip():
+                    text = result['text'].strip()
+                    transcription_parts.append(text)
+                    print(f"Partial transcription: {text}")
+        
+        # Get final result
+        final_result = json.loads(recognizer.FinalResult())
+        if final_result.get('text', '').strip():
+            final_text = final_result['text'].strip()
+            transcription_parts.append(final_text)
+            print(f"Final transcription: {final_text}")
+            
+            # Combine all parts
+            full_transcription = ' '.join(transcription_parts)
+            
+            if full_transcription:
+                return full_transcription, "Success"
+            else:
+                return None, "No speech detected in the audio file"
+                
+    except wave.Error as e:
+        return None, f"Invalid WAV file: {str(e)}"
+    except Exception as e:
+        return None, f"Error processing audio file: {str(e)}"
 
 # --- VOSK WORKER THREAD ---
 def vosk_worker(model, language, text_queue_ref, stop_event):
@@ -243,42 +349,126 @@ else:
 col1, col2 = st.columns([3, 1])
 
 with col1:
-    st.header("📝 Live Transcription")
+    st.header("📝 Speech Recognition")
     
-    # Combine full text and partial text for display
-    display_text = st.session_state.full_text
-    if st.session_state.partial_text:
-        # Add partial text with visual indicator
-        display_text += (" " if display_text else "") + st.session_state.partial_text + " ●"
-    elif st.session_state.is_recording and language == "Telugu (తెలుగు)" and not st.session_state.full_text:
-        # Special message for Telugu model (no partial results)
-        display_text = "🎙️ తెలుగు లో మాట్లాడండి... (Speak in Telugu - results appear after complete phrases) ●"
+    # Create tabs for different input methods
+    tab1, tab2 = st.tabs(["🎙️ Live Recording", "📁 Upload Audio File"])
     
-    # Display transcription in real-time
-    transcription_placeholder = st.text_area(
-        "Real-time Speech Recognition",
-        value=display_text,
-        height=400,
-        disabled=True,
-        help="Live transcription will appear here as you speak"
-    )
+    with tab1:
+        st.subheader("Real-time Microphone Input")
     
-    # Control buttons
-    col_clear, col_copy = st.columns(2)
-    with col_clear:
-        if st.button("🗑️ Clear Text", disabled=st.session_state.is_recording):
-            st.session_state.full_text = ""
-            st.session_state.partial_text = ""
-            st.rerun()
+        # Combine full text and partial text for display
+        display_text = st.session_state.full_text
+        if st.session_state.partial_text:
+            # Add partial text with visual indicator
+            display_text += (" " if display_text else "") + st.session_state.partial_text + " ●"
+        elif st.session_state.is_recording and language == "Telugu (తెలుగు)" and not st.session_state.full_text:
+            # Special message for Telugu model (no partial results)
+            display_text = "🎙️ తెలుగు లో మాట్లాడండి... (Speak in Telugu - results appear after complete phrases) ●"
+        
+        # Display transcription in real-time
+        transcription_placeholder = st.text_area(
+            "Real-time Speech Recognition",
+            value=display_text,
+            height=300,
+            disabled=True,
+            help="Live transcription will appear here as you speak"
+        )
+        
+        # Control buttons for live recording
+        col_clear, col_copy = st.columns(2)
+        with col_clear:
+            if st.button("🗑️ Clear Live Text", disabled=st.session_state.is_recording):
+                st.session_state.full_text = ""
+                st.session_state.partial_text = ""
+                st.rerun()
+        
+        with col_copy:
+            if st.session_state.full_text:
+                st.download_button(
+                    label="📋 Download Live Text",
+                    data=st.session_state.full_text,
+                    file_name=f"live_transcription_{language.lower().replace(' ', '_')}.txt",
+                    mime="text/plain"
+                )
     
-    with col_copy:
-        if st.session_state.full_text:
-            st.download_button(
-                label="📋 Download Text",
-                data=st.session_state.full_text,
-                file_name=f"transcription_{language.lower().replace(' ', '_')}.txt",
-                mime="text/plain"
+    with tab2:
+        st.subheader("Upload Audio File")
+        
+        # File upload
+        uploaded_file = st.file_uploader(
+            "Choose a WAV audio file",
+            type=['wav'],
+            help="Upload a WAV file (16kHz, 16-bit, mono) for transcription",
+            disabled=st.session_state.is_recording or st.session_state.processing_file
+        )
+        
+        if uploaded_file is not None:
+            # Display file info
+            st.info(f"📁 **File:** {uploaded_file.name} ({uploaded_file.size} bytes)")
+            
+            # Show model status
+            current_model = st.session_state.model_loaded.get(language)
+            if current_model is not None:
+                st.success(f"✅ **Model Status:** {language} model is loaded and ready")
+            else:
+                st.warning(f"⚠️ **Model Status:** {language} model is not loaded")
+            
+            # Process button
+            if st.button("🔄 Process Audio File", disabled=st.session_state.is_recording or st.session_state.processing_file):
+                # Get the current model for the selected language
+                current_model = st.session_state.model_loaded.get(language)
+                
+                if current_model is None:
+                    st.error(f"❌ {language} model is not loaded. Please wait for the model to load or check if the model directory exists.")
+                else:
+                    st.session_state.processing_file = True
+                    
+                    with st.spinner(f"🤖 Processing audio file with {language} model..."):
+                        try:
+                            # Reset the file pointer
+                            uploaded_file.seek(0)
+                            
+                            # Process the audio file
+                            transcription, message = process_audio_file(current_model, uploaded_file, language)
+                            
+                            if transcription:
+                                st.session_state.uploaded_file_text = transcription
+                                st.success("✅ Audio file processed successfully!")
+                            else:
+                                st.error(f"❌ {message}")
+                        except Exception as e:
+                            st.error(f"❌ Error processing file: {str(e)}")
+                    
+                    st.session_state.processing_file = False
+                    st.rerun()
+        
+        # Display transcription from uploaded file
+        if st.session_state.uploaded_file_text:
+            st.text_area(
+                "File Transcription Result",
+                value=st.session_state.uploaded_file_text,
+                height=300,
+                disabled=True,
+                help="Transcription from your uploaded audio file"
             )
+            
+            # Control buttons for file transcription
+            col_clear_file, col_copy_file = st.columns(2)
+            with col_clear_file:
+                if st.button("🗑️ Clear File Text", disabled=st.session_state.processing_file):
+                    st.session_state.uploaded_file_text = ""
+                    st.rerun()
+            
+            with col_copy_file:
+                st.download_button(
+                    label="📋 Download File Text",
+                    data=st.session_state.uploaded_file_text,
+                    file_name=f"file_transcription_{language.lower().replace(' ', '_')}.txt",
+                    mime="text/plain"
+                )
+        else:
+            st.info("📤 Upload a WAV audio file above to get started with file transcription.")
 
 with col2:
     st.header("ℹ️ Status")
@@ -291,11 +481,20 @@ with col2:
     
     # Instructions
     st.subheader("How to Use")
+    
+    st.write("**🎙️ Live Recording:**")
     st.write("1. Select your language")
     st.write("2. Click 'Start Recording'")
     st.write("3. Speak clearly into microphone")
     st.write("4. Watch live transcription")
     st.write("5. Click 'Stop Recording' when done")
+    
+    st.write("**📁 File Upload:**")
+    st.write("1. Select your language")
+    st.write("2. Go to 'Upload Audio File' tab")
+    st.write("3. Upload a WAV file (16kHz, mono)")
+    st.write("4. Click 'Process Audio File'")
+    st.write("5. View transcription results")
     
     # Special note for Telugu
     if language == "Telugu (తెలుగు)":
@@ -303,10 +502,18 @@ with col2:
     
     # Tips
     st.subheader("💡 Tips")
+    
+    st.write("**🎙️ Live Recording:**")
     st.write("• Speak at normal pace")
     st.write("• Minimize background noise")
     st.write("• Use a quality microphone")
     st.write("• Stay close to the microphone")
+    
+    st.write("**📁 File Upload:**")
+    st.write("• Use WAV format only")
+    st.write("• 16kHz sample rate required")
+    st.write("• 16-bit depth, mono channel")
+    st.write("• Clear audio for best results")
     
     # Language-specific tips
     if language == "Telugu (తెలుగు)":
@@ -360,12 +567,13 @@ st.markdown("---")
 st.markdown("""
 ### 🎯 About This Demo
 
-This is a **live demonstration** of WhisperBoard's speech recognition capabilities:
+This is a **comprehensive demonstration** of WhisperBoard's speech recognition capabilities:
 
 - **🎙️ Real-time Processing:** Your speech is transcribed as you speak
+- **📁 File Processing:** Upload WAV files for batch transcription
 - **🔒 100% Private:** All processing happens locally on your device
-- **🌐 Multi-language:** Supports English and Hindi recognition
+- **🌐 Multi-language:** Supports English, Hindi, and Telugu recognition
 - **⚡ Fast & Accurate:** Powered by the Vosk speech recognition toolkit
 
-**Built with ❤️ by Gade Joseph Preetham Reddy** | [GitHub Repository](https://github.com/preetham-22/WhisperBoard)
+**Built with ❤️ by Team Tokenizer's** | [GitHub Repository](https://github.com/preetham-22/WhisperBoard)
 """)
