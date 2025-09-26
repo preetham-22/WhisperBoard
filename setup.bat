@@ -58,10 +58,18 @@ if not "%missing_models%"=="" (
     echo.
     echo ⚠️ Missing model directories:%missing_models%
     echo.
-    echo To download the models:
-    echo 1. Visit: https://github.com/preetham-22/WhisperBoard/releases
-    echo 2. Download WhisperBoard-Models.zip
-    echo 3. Extract the zip file in this directory
+    echo 📥 To download the models manually, visit:
+    echo   English: https://alphacephei.com/vosk/models/vosk-model-en-us-0.22.zip
+    echo   Hindi:   https://alphacephei.com/vosk/models/vosk-model-hi-0.22.zip
+    echo   Telugu:  https://alphacephei.com/vosk/models/vosk-model-te-0.22.zip
+    echo.
+    echo 💡 Download, extract, and rename the folders to:
+    echo   vosk-model-en-us-0.22 → model-English
+    echo   vosk-model-hi-0.22    → model-Hindi  
+    echo   vosk-model-te-0.22    → model-Telugu
+    echo.
+    echo 🤖 Or use Python to download automatically:
+    echo   python -c "import urllib.request, zipfile, os; [urllib.request.urlretrieve(url, f'{name}.zip') or zipfile.ZipFile(f'{name}.zip').extractall() or os.rename([d for d in os.listdir('.') if name.lower() in d.lower() and os.path.isdir(d) and not d.startswith('model-')][0], f'model-{name}') or os.remove(f'{name}.zip') for name, url in [('English', 'https://alphacephei.com/vosk/models/vosk-model-en-us-0.22.zip'), ('Hindi', 'https://alphacephei.com/vosk/models/vosk-model-hi-0.22.zip'), ('Telugu', 'https://alphacephei.com/vosk/models/vosk-model-te-0.22.zip')]]"
     echo.
     pause
 ) else (

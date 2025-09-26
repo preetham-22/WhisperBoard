@@ -28,7 +28,18 @@ WhisperBoard uses specialized Vosk models for each supported language:
 | **Hindi (हिन्दी)** | `model-Hindi/` | Devanagari script support, partial results |  
 | **Telugu (తెలుగు)** | `model-Telugu/` | Telugu script support, complete phrase recognition |
 
-**Note:** Model files are large (100+ MB each) and are distributed separately via GitHub Releases.OS. This project was built for the **Pragna National Level Open-Source Hackathon**.
+**Note:** Model files are large (~50 MB each) and are downloaded from the official Vosk repository.
+
+### 🤖 Automated Model Downloader
+
+WhisperBoard includes `download_models.py` - an interactive script that:
+- ✅ Checks for existing models
+- 📥 Downloads missing models from official sources  
+- 📦 Automatically extracts and organizes files
+- 🎯 Allows selective downloading (choose specific languages)
+- 📊 Shows download progress and file sizes
+
+Simply run: `python download_models.py`OS. This project was built for the **Pragna National Level Open-Source Hackathon**.
 
 ### ✨ Key Features
 
@@ -67,14 +78,49 @@ Ready to use WhisperBoard? Follow these simple steps:
 ### For Streamlit Web Application:
 
 #### 1. Download Model Files
-Visit the [Releases](https://github.com/preetham-22/WhisperBoard/releases) page and download the **WhisperBoard-Models.zip** file containing all language models.
 
-#### 2. Extract Models
-Extract the downloaded zip file to your project directory. You should have:
+WhisperBoard requires Vosk language models for speech recognition. Download them from the official Vosk repository:
+
+**English Model:**
+```bash
+# Download English model (~50 MB)
+wget https://alphacephei.com/vosk/models/vosk-model-en-us-0.22.zip
+unzip vosk-model-en-us-0.22.zip
+mv vosk-model-en-us-0.22 model-English
+```
+
+**Hindi Model:**
+```bash
+# Download Hindi model (~42 MB)
+wget https://alphacephei.com/vosk/models/vosk-model-hi-0.22.zip
+unzip vosk-model-hi-0.22.zip
+mv vosk-model-hi-0.22 model-Hindi
+```
+
+**Telugu Model:**
+```bash
+# Download Telugu model (~45 MB)  
+wget https://alphacephei.com/vosk/models/vosk-model-te-0.22.zip
+unzip vosk-model-te-0.22.zip
+mv vosk-model-te-0.22 model-Telugu
+```
+
+**🚀 Easy Download (Recommended):**
+```bash
+# Cross-platform Python script
+python download_models.py
+
+# Or use setup scripts
+# Linux/Mac: ./setup.sh  
+# Windows: setup.bat
+```
+
+#### 2. Verify Model Structure
+After downloading, you should have:
 ```
 WhisperBoard/
 ├── model-English/     # English (US) language model
-├── model-Hindi/       # Hindi (हिन्दी) language model
+├── model-Hindi/       # Hindi (हिन्दी) language model  
 ├── model-Telugu/      # Telugu (తెలుగు) language model
 └── app.py            # Main application file
 ```
