@@ -1,5 +1,12 @@
 Python
-pycache/
+p# Vosk Model Folders
+# This is the most important part!
+# It prevents uploading the large AI model files to GitHub.
+model/
+model-hi/
+model-English/
+model-Hindi/
+model-Telugu/e/
 *.py[cod]
 *.so
 .env
